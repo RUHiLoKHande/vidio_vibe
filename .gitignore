@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.codex-run/
+.codex-preview.log
+.codex-server*.log
+.env*
+!.env.example
+public/uploads/
+.firebase/
+*.db
+*.sqlite
+*.sqlite3
