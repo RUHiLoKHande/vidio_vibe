@@ -1,0 +1,43 @@
+runConfig:
+  minInstances: 0
+  concurrency: 20
+  cpu: 1
+  memoryMiB: 1024
+
+env:
+  - variable: APP_URL
+    value: https://vibeai-ad-studio--adslogins.us-central1.hosted.app
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: ALLOWED_ORIGINS
+    value: https://vibeai-ad-studio--adslogins.us-central1.hosted.app
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: ALLOW_INSECURE_LOCAL_AUTH
+    value: "false"
+    availability:
+      - RUNTIME
+  - variable: DEMO_LOGIN_EMAIL
+    value: demo@example.com
+    availability:
+      - RUNTIME
+  - variable: AWS_REGION
+    value: ap-south-1
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: S3_BUCKET
+    value: vibeai-media-rushikesh
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+  - variable: ELEVENLABS_API_KEY
+    secret: ELEVENLABS_API_KEY
+  - variable: AWS_ACCESS_KEY_ID
+    secret: AWS_ACCESS_KEY_ID
+  - variable: AWS_SECRET_ACCESS_KEY
+    secret: AWS_SECRET_ACCESS_KEY

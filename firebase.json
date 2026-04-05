@@ -1,4 +1,8 @@
 {
+  "apphosting": {
+    "backendId": "vibeai-ad-studio",
+    "alwaysDeployFromSource": true
+  },
   "hosting": {
     "public": "dist",
     "ignore": [
