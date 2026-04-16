@@ -1209,7 +1209,14 @@ const storage = multer.diskStorage({
         inferContentType(adRecord)
       );
       updateJob(jobId, { progress: 35, label: 'Rendering final video assets' });
-      const localVideoPath = await generator.renderEditedVideo(scenes, voiceSettings, musicSettings, finalWebsiteUrl, language);
+      const localVideoPath = await generator.renderEditedVideo(
+        scenes,
+        voiceSettings,
+        musicSettings,
+        finalWebsiteUrl,
+        language,
+        adRecord?.generation_mode || 'basic'
+      );
 
       // Convert local path to URL path
       const videoUrl = localVideoPath.replace(/\\/g, '/').replace(/^.*\/public/, '');

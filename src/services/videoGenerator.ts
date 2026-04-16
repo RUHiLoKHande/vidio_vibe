@@ -1753,8 +1753,16 @@ export class VideoGenerator {
     return `/uploads/${this.adId}/final_ad.mp4`;
   }
 
-  async renderEditedVideo(scenes: any[], voiceSettings: any, musicSettings: any, websiteUrl?: string, language?: SupportedLanguage): Promise<string> {
+  async renderEditedVideo(
+    scenes: any[],
+    voiceSettings: any,
+    musicSettings: any,
+    websiteUrl?: string,
+    language?: SupportedLanguage,
+    generationMode: GenerationMode = 'basic'
+  ): Promise<string> {
     try {
+      const isRealisticMode = generationMode === 'realistic';
       const resolvedLanguage = normalizeLanguage(language || voiceSettings?.language || this.parsedScript?.language || this.language);
       this.language = resolvedLanguage;
       console.log(`[${this.adId}] Rendering edited video with ENHANCED pipeline...`);
@@ -1794,6 +1802,40 @@ export class VideoGenerator {
       this.script = fullNarration;
       await this.generateTTS(voiceSettings?.voiceType, voiceSettings?.speed, resolvedLanguage);
       renderScenes = await this.ensureTimelineCoversAudio(renderScenes, finalAudioPath);
+
+      if (isRealisticMode) {
+        try {
+          console.log(`[${this.adId}] REALISTIC EDITED RENDER: generating scene video clips from current edited prompts`);
+          const scenePrompts = renderScenes.map((scene, index) => {
+            const narration = typeof scene?.narration === 'string' ? scene.narration.trim() : '';
+            const overlay = typeof scene?.textOverlay === 'string'
+              ? scene.textOverlay.trim()
+              : (typeof scene?.overlay === 'string' ? scene.overlay.trim() : '');
+            const fallbackPrompt = generateVideoPromptFromNarration(
+              narration || overlay || `Scene ${index + 1}`,
+              index,
+              this.contentConfig.style
+            );
+
+            return {
+              video_prompt:
+                scene?.video_prompt ||
+                scene?.videoPrompt ||
+                scene?.image_prompt ||
+                scene?.imagePrompt ||
+                fallbackPrompt,
+              duration: Number(scene?.duration) > 0 ? Number(scene.duration) : 4
+            };
+          });
+
+          const videoClips = await generateVideoClipsForScenes(scenePrompts, this.adId);
+          const mergedVideoPath = await mergeVideoClips(videoClips, this.adId);
+          return await this.addAudioAndOverlay(mergedVideoPath, finalAudioPath, websiteUrl || '', musicSettings);
+        } catch (realisticRenderError) {
+          console.warn(`[${this.adId}] REALISTIC EDITED RENDER failed, falling back to slideshow render:`, realisticRenderError);
+        }
+      }
+
       const outputPath = path.join(this.workDir, `edited_ad_${Date.now()}.mp4`);
       
       // Create a concat file for scenes
@@ -2233,17 +2275,33 @@ export class VideoGenerator {
   /**
    * Add audio, text overlays, and final touches to video
    */
-  private async addAudioAndOverlay(videoPath: string, audioPath: string, websiteUrl: string): Promise<string> {
+  private async addAudioAndOverlay(videoPath: string, audioPath: string, websiteUrl: string, musicSettings?: any): Promise<string> {
     const outputPath = path.join(this.workDir, 'final_ad.mp4');
-    const bgMusicPath = await this.downloadBackgroundMusic();
+    let bgMusicPath: string | null = null;
+    const desiredMusicVolume = typeof musicSettings?.volume === 'number' ? musicSettings.volume : 0.1;
+    if (desiredMusicVolume > 0) {
+      if (musicSettings?.musicPath) {
+        let customPath = musicSettings.musicPath;
+        if (customPath.startsWith('/uploads/')) {
+          customPath = path.join(process.cwd(), 'public', customPath.replace(/^\//, ''));
+        }
+        if (fs.existsSync(customPath)) {
+          bgMusicPath = customPath;
+        }
+      }
+
+      if (!bgMusicPath) {
+        bgMusicPath = await this.downloadBackgroundMusic(musicSettings?.preset || 'corporate');
+      }
+    }
     const logoPath = websiteUrl ? await this.scrapeLogo(websiteUrl) : null;
     
     let ffmpegCmd = '';
     
     if (bgMusicPath && logoPath) {
-      ffmpegCmd = `"${ffmpegStatic}" -y -i "${videoPath}" -i "${audioPath}" -i "${bgMusicPath}" -i "${logoPath}" -filter_complex "[2:a]volume=0.1[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout];[3:v]scale=150:-1[logo];[0:v][logo]overlay=30:30[vout]" -map \"[vout]\" -map \"[aout]\" -c:v libx264 -r 30 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
+      ffmpegCmd = `"${ffmpegStatic}" -y -i "${videoPath}" -i "${audioPath}" -i "${bgMusicPath}" -i "${logoPath}" -filter_complex "[2:a]volume=${desiredMusicVolume}[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout];[3:v]scale=150:-1[logo];[0:v][logo]overlay=30:30[vout]" -map \"[vout]\" -map \"[aout]\" -c:v libx264 -r 30 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
     } else if (bgMusicPath) {
-      ffmpegCmd = `"${ffmpegStatic}" -y -i "${videoPath}" -i "${audioPath}" -i "${bgMusicPath}" -filter_complex "[2:a]volume=0.1[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map 0:v -map \"[aout]\" -c:v libx264 -r 30 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
+      ffmpegCmd = `"${ffmpegStatic}" -y -i "${videoPath}" -i "${audioPath}" -i "${bgMusicPath}" -filter_complex "[2:a]volume=${desiredMusicVolume}[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map 0:v -map \"[aout]\" -c:v libx264 -r 30 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
     } else if (logoPath) {
       ffmpegCmd = `"${ffmpegStatic}" -y -i "${videoPath}" -i "${audioPath}" -i "${logoPath}" -filter_complex "[2:v]scale=150:-1[logo];[0:v][logo]overlay=30:30[vout]" -map \"[vout]\" -map 1:a -c:v libx264 -r 30 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
     } else {
